@@ -1,0 +1,203 @@
+import { spawn, spawnSync } from 'child_process';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const TRY_CF_URL_REGEX = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/i;
+
+async function searchPathFor(command) {
+  const pathValue = process.env.PATH || '';
+  const segments = pathValue.split(path.delimiter).filter(Boolean);
+  const WINDOWS_EXTENSIONS = process.platform === 'win32'
+    ? (process.env.PATHEXT || '.EXE;.CMD;.BAT;.COM')
+        .split(';')
+        .map((ext) => ext.trim().toLowerCase())
+        .filter(Boolean)
+        .map((ext) => (ext.startsWith('.') ? ext : `.${ext}`))
+    : [''];
+
+  for (const dir of segments) {
+    for (const ext of WINDOWS_EXTENSIONS) {
+      const fileName = process.platform === 'win32' ? `${command}${ext}` : command;
+      const candidate = path.join(dir, fileName);
+      try {
+        const stats = fs.statSync(candidate);
+        if (stats.isFile()) {
+          if (process.platform !== 'win32') {
+            try {
+              fs.accessSync(candidate, fs.constants.X_OK);
+            } catch {
+              continue;
+            }
+          }
+          return candidate;
+        }
+      } catch {
+        continue;
+      }
+    }
+  }
+  return null;
+}
+
+export async function checkCloudflaredAvailable() {
+  const cfPath = await searchPathFor('cloudflared');
+  if (cfPath) {
+    try {
+      const result = spawnSync(cfPath, ['--version'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+      if (result.status === 0) {
+        return { available: true, path: cfPath, version: result.stdout.trim() };
+      }
+    } catch {
+      // Ignore
+    }
+  }
+  return { available: false, path: null, version: null };
+}
+
+export function printCloudflareTunnelInstallHelp() {
+  const platform = process.platform;
+  let installCmd = '';
+
+  if (platform === 'darwin') {
+    installCmd = 'brew install cloudflared';
+  } else if (platform === 'win32') {
+    installCmd = 'winget install --id Cloudflare.cloudflared';
+  } else {
+    installCmd = 'Download from https://github.com/cloudflare/cloudflared/releases';
+  }
+
+  console.log(`
+╔══════════════════════════════════════════════════════════════════╗
+║  Cloudflare tunnel requires 'cloudflared' to be installed        ║
+╚══════════════════════════════════════════════════════════════════╝
+
+Install instructions for your platform:
+
+  macOS:    brew install cloudflared
+  Windows:  winget install --id Cloudflare.cloudflared
+  Linux:    Download from https://github.com/cloudflare/cloudflared/releases
+
+Or visit: https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflared/downloads/
+`);
+}
+
+export async function startCloudflareTunnel({ originUrl, port }) {
+  const cfCheck = await checkCloudflaredAvailable();
+
+  if (!cfCheck.available) {
+    printCloudflareTunnelInstallHelp();
+    throw new Error('cloudflared is not installed');
+  }
+
+  console.log(`Using cloudflared: ${cfCheck.path} (${cfCheck.version})`);
+
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openchamber-cf-'));
+
+  const child = spawn('cloudflared', ['tunnel', '--url', originUrl], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: {
+      ...process.env,
+      HOME: tempDir,
+      CF_TELEMETRY_DISABLE: '1',
+    },
+    killSignal: 'SIGINT',
+  });
+
+  let publicUrl = null;
+  let tunnelReady = false;
+
+  const onData = (chunk, isStderr) => {
+    const text = chunk.toString('utf8');
+
+    if (!tunnelReady) {
+      const match = text.match(TRY_CF_URL_REGEX);
+      if (match) {
+        publicUrl = match[0];
+        tunnelReady = true;
+        console.log('\n' + '═'.repeat(60));
+        console.log('🌐  Cloudflare Quick Tunnel is ready!');
+        console.log('═'.repeat(60));
+        console.log(`\n   Your URL: ${publicUrl}\n`);
+        console.log('   NOTE: This is a temporary public URL.');
+        console.log('   Anyone with the link can access your OpenChamber instance.');
+        console.log('   The URL will expire when the tunnel stops.\n');
+        console.log('═'.repeat(60) + '\n');
+      }
+    }
+
+    process.stderr.write(isStderr ? text : '');
+  };
+
+  child.stdout.on('data', (chunk) => onData(chunk, false));
+  child.stderr.on('data', (chunk) => onData(chunk, true));
+
+  child.on('error', (error) => {
+    console.error(`Cloudflared error: ${error.message}`);
+    cleanupTempDir();
+  });
+
+  child.on('exit', (code) => {
+    if (code !== null && code !== 0 && !publicUrl) {
+      console.error(`Cloudflared exited with code ${code}`);
+    }
+    cleanupTempDir();
+  });
+
+  const cleanupTempDir = () => {
+    try {
+      if (fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    } catch {
+      // Ignore cleanup errors
+    }
+  };
+
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      if (!publicUrl) {
+        reject(new Error('Tunnel URL not received within 30 seconds'));
+      }
+    }, 30000);
+
+    child.on('exit', (code) => {
+      clearTimeout(timeout);
+      if (code !== 0 && code !== null) {
+        reject(new Error(`Cloudflared exited with code ${code}`));
+      } else {
+        resolve(null);
+      }
+    });
+  });
+
+  return {
+    stop: () => {
+      try {
+        child.kill('SIGINT');
+      } catch {
+        // Ignore
+      }
+    },
+    process: child,
+    getPublicUrl: () => publicUrl,
+  };
+}
+
+export function printTunnelWarning() {
+  console.log(`
+⚠️  Cloudflare Quick Tunnel Limitations:
+
+   • Maximum 200 concurrent requests
+   • Server-Sent Events (SSE) are NOT supported
+   • URLs are temporary and will expire when the tunnel stops
+   • No access controls - anyone with the URL can access
+
+   For production use, set up a named Cloudflare Tunnel:
+   https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/
+`);
+}

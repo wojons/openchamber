@@ -14,7 +14,7 @@ const PACKAGE_JSON = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'pack
 function parseArgs() {
   const args = process.argv.slice(2);
   const envPassword = process.env.OPENCHAMBER_UI_PASSWORD || undefined;
-  const options = { port: DEFAULT_PORT, daemon: false, uiPassword: envPassword };
+  const options = { port: DEFAULT_PORT, daemon: false, uiPassword: envPassword, tryCfTunnel: false };
   let command = 'serve';
 
   const consumeValue = (currentIndex, inlineValue) => {
@@ -57,6 +57,9 @@ function parseArgs() {
         case 'd':
           options.daemon = true;
           break;
+        case 'try-cf-tunnel':
+          options.tryCfTunnel = true;
+          break;
         case 'ui-password': {
           const { value, nextIndex } = consumeValue(i, inlineValue);
           i = nextIndex;
@@ -97,11 +100,12 @@ COMMANDS:
   update         Check for and install updates
 
 OPTIONS:
-  -p, --port     Web server port (default: ${DEFAULT_PORT})
-  --ui-password  Protect browser UI with single password
-  -d, --daemon   Run in background (serve command)
-  -h, --help     Show help
-  -v, --version  Show version
+  -p, --port           Web server port (default: ${DEFAULT_PORT})
+  --ui-password        Protect browser UI with single password
+  --try-cf-tunnel      Create a Cloudflare Quick Tunnel for remote access
+  -d, --daemon         Run in background (serve command)
+  -h, --help           Show help
+  -v, --version        Show version
 
 ENVIRONMENT:
   OPENCHAMBER_UI_PASSWORD  Alternative to --ui-password flag
@@ -110,6 +114,7 @@ EXAMPLES:
   openchamber                    # Start on default port 3000
   openchamber --port 8080        # Start on port 8080
   openchamber serve --daemon     # Start in background
+  openchamber --try-cf-tunnel    # Start with Cloudflare Quick Tunnel
   openchamber stop               # Stop all running instances
   openchamber stop --port 3000   # Stop specific instance
   openchamber status             # Check status
@@ -357,6 +362,9 @@ const commands = {
     if (typeof options.uiPassword === 'string') {
       serverArgs.push('--ui-password', options.uiPassword);
     }
+    if (options.tryCfTunnel) {
+      serverArgs.push('--try-cf-tunnel');
+    }
 
     if (options.daemon) {
 
@@ -367,7 +375,8 @@ const commands = {
           ...process.env,
           OPENCHAMBER_PORT: options.port.toString(),
           OPENCODE_BINARY: opencodeBinary,
-          ...(typeof options.uiPassword === 'string' ? { OPENCHAMBER_UI_PASSWORD: options.uiPassword } : {})
+          ...(typeof options.uiPassword === 'string' ? { OPENCHAMBER_UI_PASSWORD: options.uiPassword } : {}),
+          OPENCHAMBER_TRY_CF_TUNNEL: options.tryCfTunnel ? 'true' : 'false',
         }
       });
 
@@ -398,7 +407,8 @@ const commands = {
         port: options.port,
         attachSignals: true,
         exitOnShutdown: true,
-        uiPassword: typeof options.uiPassword === 'string' ? options.uiPassword : null
+        uiPassword: typeof options.uiPassword === 'string' ? options.uiPassword : null,
+        tryCfTunnel: options.tryCfTunnel,
       });
     }
   },
