@@ -59,6 +59,7 @@ The whole project was built entirely with AI coding agents under my supervision.
 - Mobile-first UI with gestures and optimized terminal controls
 - Self-serve web updates (no CLI required)
 - Update and restart keeps previous server settings (port/password)
+- Cloudflare Quick Tunnel support for easy remote access (`--try-cf-tunnel`)
 
 ### Desktop (macOS)
 
@@ -91,6 +92,7 @@ openchamber                          # Start on port 3000
 openchamber --port 8080              # Custom port
 openchamber --daemon                 # Background mode
 openchamber --ui-password secret     # Password-protect UI
+openchamber --try-cf-tunnel          # Create a Cloudflare Quick Tunnel for remote access
 openchamber stop                     # Stop server
 openchamber update                   # Update to latest version
 ```
