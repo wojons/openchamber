@@ -2,7 +2,7 @@
   "name": "openchamber",
   "displayName": "OpenChamber",
   "description": "AI coding assistant powered by OpenCode",
-  "version": "1.3.8",
+  "version": "1.3.9",
   "publisher": "fedaykindev",
   "private": true,
   "repository": {
@@ -55,6 +55,19 @@
     },
     "commands": [
       {
+        "command": "openchamber.openSidebar",
+        "title": "Open OpenChamber Sidebar",
+        "icon": {
+          "light": "assets/icon.svg",
+          "dark": "assets/icon-titlebar.svg"
+        }
+      },
+      {
+        "command": "openchamber.focusChat",
+        "title": "OpenChamber: Focus Chat"
+      },
+
+      {
         "command": "openchamber.restartApi",
         "title": "OpenChamber: Restart API Connection"
       },
@@ -86,6 +99,12 @@
         {
           "submenu": "openchamber.submenu",
           "group": "navigation"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "openchamber.openSidebar",
+          "group": "navigation@1"
         }
       ],
       "openchamber.submenu": [
@@ -136,6 +155,7 @@
     "@openchamber/ui": "workspace:*",
     "@opencode-ai/sdk": "^1.0.209",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "yaml": "^2.8.1"
   }
 }
