@@ -105,6 +105,7 @@ Download from [Releases](https://github.com/btriapitsyn/openchamber/releases).
 
 - [OpenCode CLI](https://opencode.ai) installed
 - Node.js 20+ (for web version)
+- [cloudflared](https://github.com/cloudflare/cloudflared/releases) (required for `--try-cf-tunnel`)
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 
