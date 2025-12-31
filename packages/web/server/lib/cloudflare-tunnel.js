@@ -141,13 +141,6 @@ export async function startCloudflareTunnel({ originUrl, port }) {
     cleanupTempDir();
   });
 
-  child.on('exit', (code) => {
-    if (code !== null && code !== 0 && !publicUrl) {
-      console.error(`Cloudflared exited with code ${code}`);
-    }
-    cleanupTempDir();
-  });
-
   const cleanupTempDir = () => {
     try {
       if (fs.existsSync(tempDir)) {
@@ -165,12 +158,20 @@ export async function startCloudflareTunnel({ originUrl, port }) {
       }
     }, 30000);
 
+    const checkReady = setInterval(() => {
+      if (publicUrl) {
+        clearTimeout(timeout);
+        clearInterval(checkReady);
+        resolve(null);
+      }
+    }, 100);
+
     child.on('exit', (code) => {
       clearTimeout(timeout);
-      if (code !== 0 && code !== null) {
+      clearInterval(checkReady);
+      cleanupTempDir();
+      if (code !== null && code !== 0) {
         reject(new Error(`Cloudflared exited with code ${code}`));
-      } else {
-        resolve(null);
       }
     });
   });

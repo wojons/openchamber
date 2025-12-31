@@ -1821,6 +1821,7 @@ async function main(options = {}) {
   const port = Number.isFinite(options.port) && options.port >= 0 ? Math.trunc(options.port) : DEFAULT_PORT;
   const tryCfTunnel = options.tryCfTunnel === true;
   const attachSignals = options.attachSignals !== false;
+  const onTunnelReady = typeof options.onTunnelReady === 'function' ? options.onTunnelReady : null;
   if (typeof options.exitOnShutdown === 'boolean') {
     exitOnShutdown = options.exitOnShutdown;
   }
@@ -3874,6 +3875,12 @@ async function main(options = {}) {
             const originUrl = `http://localhost:${activePort}`;
             cloudflareTunnelController = await startCloudflareTunnel({ originUrl, port: activePort });
             printTunnelWarning();
+            if (onTunnelReady) {
+              const tunnelUrl = cloudflareTunnelController.getPublicUrl();
+              if (tunnelUrl) {
+                onTunnelReady(tunnelUrl);
+              }
+            }
           } catch (error) {
             console.error(`Failed to start Cloudflare tunnel: ${error.message}`);
             console.log('Continuing without tunnel...');
