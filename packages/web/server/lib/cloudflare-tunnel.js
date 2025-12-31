@@ -119,14 +119,6 @@ export async function startCloudflareTunnel({ originUrl, port }) {
       if (match) {
         publicUrl = match[0];
         tunnelReady = true;
-        console.log('\n' + '═'.repeat(60));
-        console.log('🌐  Cloudflare Quick Tunnel is ready!');
-        console.log('═'.repeat(60));
-        console.log(`\n   Your URL: ${publicUrl}\n`);
-        console.log('   NOTE: This is a temporary public URL.');
-        console.log('   Anyone with the link can access your OpenChamber instance.');
-        console.log('   The URL will expire when the tunnel stops.\n');
-        console.log('═'.repeat(60) + '\n');
       }
     }
 
@@ -196,7 +188,7 @@ export function printTunnelWarning() {
    • Maximum 200 concurrent requests
    • Server-Sent Events (SSE) are NOT supported
    • URLs are temporary and will expire when the tunnel stops
-   • No access controls - anyone with the URL can access
+   • Password protection is required for tunnel access
 
    For production use, set up a named Cloudflare Tunnel:
    https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/

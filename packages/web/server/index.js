@@ -677,21 +677,18 @@ function resolveBinaryFromPath(binaryName, searchPath) {
 }
 
 function getOpencodeSpawnConfig() {
-  const envPath = buildAugmentedPath();
-  const resolvedEnv = { ...process.env, PATH: envPath };
-
   if (OPENCODE_BINARY_ENV) {
-    const explicit = resolveBinaryFromPath(OPENCODE_BINARY_ENV, envPath);
+    const explicit = resolveBinaryFromPath(OPENCODE_BINARY_ENV, process.env.PATH);
     if (explicit) {
       console.log(`Using OpenCode binary from OPENCODE_BINARY: ${explicit}`);
-      return { command: explicit, env: resolvedEnv };
+      return { command: explicit, env: undefined };
     }
     console.warn(
       `OPENCODE_BINARY path "${OPENCODE_BINARY_ENV}" not found. Falling back to search.`
     );
   }
 
-  return { command: 'opencode', env: resolvedEnv };
+  return { command: 'opencode', env: undefined };
 }
 
 const ENV_CONFIGURED_OPENCODE_PORT = (() => {
@@ -3929,6 +3926,7 @@ if (isCliExecution) {
   exitOnShutdown = true;
   main({
     port: cliOptions.port,
+    tryCfTunnel: cliOptions.tryCfTunnel,
     attachSignals: true,
     exitOnShutdown: true,
     uiPassword: cliOptions.uiPassword
