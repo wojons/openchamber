@@ -17,11 +17,15 @@ import { FadeInOnReveal } from './FadeInOnReveal';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { RiCheckLine, RiFileCopyLine, RiChatNewLine, RiArrowGoBackLine } from '@remixicon/react';
+import { ArrowsMerge } from '@/components/icons/ArrowsMerge';
 import type { ContentChangeReason } from '@/hooks/useChatScrollManager';
 
 import { SimpleMarkdownRenderer } from '../MarkdownRenderer';
 import { useMessageStore } from '@/stores/messageStore';
 import { useSessionStore } from '@/stores/useSessionStore';
+import { useUIStore } from '@/stores/useUIStore';
+import { flattenAssistantTextParts } from '@/lib/messages/messageText';
+import { MULTIRUN_EXECUTION_FORK_PROMPT_META_TEXT } from '@/lib/messages/executionMeta';
 
 
 const useMigrationTimer = (
@@ -129,7 +133,7 @@ interface MessageBodyProps {
     agentMention?: AgentMentionInfo;
     turnGroupingContext?: TurnGroupingContext;
     onRevert?: () => void;
-    isFirstMessage?: boolean;
+    errorMessage?: string;
 }
 
 const UserMessageBody: React.FC<{
@@ -143,8 +147,7 @@ const UserMessageBody: React.FC<{
     onShowPopup: (content: ToolPopupContent) => void;
     agentMention?: AgentMentionInfo;
     onRevert?: () => void;
-    isFirstMessage?: boolean;
-}> = ({ messageId, parts, isMobile, hasTouchInput, hasTextContent, onCopyMessage, copiedMessage, onShowPopup, agentMention, onRevert, isFirstMessage }) => {
+}> = ({ messageId, parts, isMobile, hasTouchInput, hasTextContent, onCopyMessage, copiedMessage, onShowPopup, agentMention, onRevert }) => {
     const [copyHintVisible, setCopyHintVisible] = React.useState(false);
     const copyHintTimeoutRef = React.useRef<number | null>(null);
 
@@ -236,12 +239,12 @@ const UserMessageBody: React.FC<{
                 })}
             </div>
             <MessageFilesDisplay files={parts} onShowPopup={onShowPopup} />
-            {(canCopyMessage && hasCopyableText) || (onRevert && !isFirstMessage) ? (
+            {(canCopyMessage && hasCopyableText) || onRevert ? (
                 <div className={cn(
                     "mt-1 flex items-center justify-end gap-2 opacity-0 pointer-events-none transition-opacity duration-150 group-hover/message:opacity-100 group-hover/message:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto",
                     copyHintVisible && "opacity-100 pointer-events-auto"
                 )}>
-                    {onRevert && !isFirstMessage && (
+                    {onRevert && (
                         <Tooltip delayDuration={1000}>
                             <TooltipTrigger asChild>
                                 <Button
@@ -318,6 +321,7 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
     onAuxiliaryContentComplete,
     showReasoningTraces = false,
     turnGroupingContext,
+    errorMessage,
 }) => {
 
     void _streamPhase;
@@ -348,6 +352,7 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
     }, [visibleParts]);
 
     const createSessionFromAssistantMessage = useSessionStore((state) => state.createSessionFromAssistantMessage);
+    const openMultiRunLauncherWithPrompt = useUIStore((state) => state.openMultiRunLauncherWithPrompt);
     const isLastAssistantInTurn = turnGroupingContext?.isLastAssistantInTurn ?? false;
     const hasStopFinish = messageFinish === 'stop';
 
@@ -539,6 +544,22 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
             void createSessionFromAssistantMessage(messageId);
         },
         [createSessionFromAssistantMessage, messageId]
+    );
+
+    const handleForkMultiRunClick = React.useCallback(
+        (event: React.MouseEvent<HTMLButtonElement>) => {
+            event.stopPropagation();
+            event.preventDefault();
+
+            const assistantPlanText = flattenAssistantTextParts(assistantTextParts);
+            if (!assistantPlanText.trim()) {
+                return;
+            }
+
+            const prefilledPrompt = `${MULTIRUN_EXECUTION_FORK_PROMPT_META_TEXT}\n\n${assistantPlanText}`;
+            openMultiRunLauncherWithPrompt(prefilledPrompt);
+        },
+        [assistantTextParts, openMultiRunLauncherWithPrompt]
     );
 
     React.useEffect(() => {
@@ -1051,26 +1072,44 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
         summaryBody &&
         summaryBody.trim().length > 0;
 
-    const shouldShowFooter = hasTextContent && assistantTextParts.length > 0 && hasStopFinish && isLastAssistantInTurn;
+    const showErrorMessage = Boolean(errorMessage);
+
+    const shouldShowFooter = isLastAssistantInTurn && hasTextContent && (hasStopFinish || Boolean(errorMessage));
     const [isSummaryHovered, setIsSummaryHovered] = React.useState(false);
 
     const footerButtons = (
          <>
-             <Tooltip delayDuration={1000}>
-                 <TooltipTrigger asChild>
-                     <Button
-                         type="button"
-                         size="icon"
-                         variant="ghost"
-                         className="h-8 w-8 text-muted-foreground bg-transparent hover:text-foreground hover:!bg-transparent active:!bg-transparent focus-visible:!bg-transparent focus-visible:ring-2 focus-visible:ring-primary/50"
-                         onPointerDown={(event) => event.stopPropagation()}
-                         onClick={handleForkClick}
-                     >
-                         <RiChatNewLine className="h-4 w-4" />
-                     </Button>
-                 </TooltipTrigger>
-                 <TooltipContent sideOffset={6}>Start new session from this answer</TooltipContent>
-             </Tooltip>
+              <Tooltip delayDuration={1000}>
+                  <TooltipTrigger asChild>
+                      <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 text-muted-foreground bg-transparent hover:text-foreground hover:!bg-transparent active:!bg-transparent focus-visible:!bg-transparent focus-visible:ring-2 focus-visible:ring-primary/50"
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onClick={handleForkClick}
+                      >
+                          <RiChatNewLine className="h-4 w-4" />
+                      </Button>
+                  </TooltipTrigger>
+                  <TooltipContent sideOffset={6}>Start new session from this answer</TooltipContent>
+              </Tooltip>
+              <Tooltip delayDuration={1000}>
+                  <TooltipTrigger asChild>
+                      <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 text-muted-foreground bg-transparent hover:text-foreground hover:!bg-transparent active:!bg-transparent focus-visible:!bg-transparent focus-visible:ring-2 focus-visible:ring-primary/50"
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onClick={handleForkMultiRunClick}
+                      >
+                          <ArrowsMerge className="h-4 w-4" />
+                      </Button>
+                  </TooltipTrigger>
+                  <TooltipContent sideOffset={6}>Start new multi-run from this answer</TooltipContent>
+              </Tooltip>
+
              {onCopyMessage && (
                  <Tooltip delayDuration={1000}>
                      <TooltipTrigger asChild>
@@ -1131,6 +1170,13 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
                     className="leading-normal overflow-hidden text-foreground/90 [&_p:last-child]:mb-0 [&_ul:last-child]:mb-0 [&_ol:last-child]:mb-0"
                 >
                     {renderedParts}
+                    {showErrorMessage && (
+                        <FadeInOnReveal key="assistant-error">
+                            <div className="group/assistant-text relative break-words">
+                                <SimpleMarkdownRenderer content={errorMessage ?? ''} />
+                            </div>
+                        </FadeInOnReveal>
+                    )}
                     {showSummaryBody && (
                         <FadeInOnReveal key="summary-body">
                             <div
@@ -1180,7 +1226,6 @@ const MessageBody: React.FC<MessageBodyProps> = ({ isUser, ...props }) => {
                 onShowPopup={props.onShowPopup}
                 agentMention={props.agentMention}
                 onRevert={props.onRevert}
-                isFirstMessage={props.isFirstMessage}
             />
         );
     }
